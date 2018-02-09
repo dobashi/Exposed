@@ -68,7 +68,7 @@ class ConnectionTimeoutTest : DatabaseTestsBase(){
 
     @After
     fun `teardown`(){
-        TransactionManager.removeCurrent()
+        TransactionManager.resetCurrent(null)
     }
 
 }
@@ -230,7 +230,7 @@ class ConnectionExceptions {
 
     @After
     fun `teardown`(){
-        TransactionManager.removeCurrent()
+        TransactionManager.resetCurrent(null)
     }
 
 }
@@ -240,12 +240,14 @@ class ThreadLocalManagerTest : DatabaseTestsBase() {
     fun testReconnection() {
         var secondThreadTm: TransactionManager? = null
         var isMysql = false
-        withDb(TestDB.MYSQL) {
+        TestDB.MYSQL.connect()
+        transaction {
             isMysql = true
             SchemaUtils.create(DMLTestsData.Cities)
             val firstThreadTm = TransactionManager.manager
             thread {
-                withDb(TestDB.MYSQL) {
+                TestDB.MYSQL.connect()
+                transaction {
                     DMLTestsData.Cities.selectAll().toList()
                     secondThreadTm = TransactionManager.manager
                     assertNotEquals(firstThreadTm, secondThreadTm)
