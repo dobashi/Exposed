@@ -8,6 +8,7 @@ import org.jetbrains.exposed.sql.statements.BatchDataInconsistentException
 import org.jetbrains.exposed.sql.statements.BatchInsertStatement
 import org.jetbrains.exposed.sql.tests.DatabaseTestsBase
 import org.jetbrains.exposed.sql.tests.TestDB
+import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.vendors.OracleDialect
 import org.jetbrains.exposed.sql.vendors.PostgreSQLDialect
 import org.jetbrains.exposed.sql.vendors.currentDialect
@@ -908,6 +909,61 @@ class DMLTests : DatabaseTestsBase() {
     }
 
     @Test
+    fun testInsertAndGetId01() {
+        val idTable = object : IntIdTable("tmp") {
+            val name = varchar("foo", 10).uniqueIndex()
+        }
+
+        withTables(idTable) {
+            idTable.insertAndGetId {
+                it[idTable.name] = "1"
+            }
+
+            assertEquals(1, idTable.selectAll().count())
+
+            idTable.insertAndGetId {
+                it[idTable.name] = "2"
+            }
+
+            assertEquals(2, idTable.selectAll().count())
+
+            assertFailAndRollback("Unique constraint") {
+                idTable.insertAndGetId {
+                    it[idTable.name] = "2"
+                }
+            }
+        }
+    }
+
+    @Test
+    fun testInsertIgnoreAndGetId01() {
+        val idTable = object : IntIdTable("tmp") {
+            val name = varchar("foo", 10).uniqueIndex()
+        }
+
+        withTables(TestDB.values().toList() - listOf(TestDB.MYSQL), idTable) {
+            idTable.insertIgnoreAndGetId {
+                it[idTable.name] = "1"
+            }
+
+            assertEquals(1, idTable.selectAll().count())
+
+            idTable.insertIgnoreAndGetId {
+                it[idTable.name] = "2"
+            }
+
+            assertEquals(2, idTable.selectAll().count())
+
+            val idNull = idTable.insertIgnoreAndGetId {
+                it[idTable.name] = "2"
+            }
+
+            assertEquals(null, idNull)
+        }
+    }
+
+
+    @Test
     fun testBatchInsert01() {
         withCitiesAndUsers { cities, users, _ ->
             val cityNames = listOf("Paris", "Moscow", "Helsinki")
@@ -1371,7 +1427,7 @@ class DMLTests : DatabaseTestsBase() {
             val expectedColumnSet = users innerJoin cities
             queryAdjusted.adjustColumnSet { innerJoin(cities) }
             val actualColumnSet = queryAdjusted.set.source
-            fun ColumnSet.repr(): String = this.describe(queryAdjusted.transaction)
+            fun ColumnSet.repr(): String = this.describe(TransactionManager.current())
 
             assertNotEquals(oldColumnSet.repr(), actualColumnSet.repr())
             assertEquals(expectedColumnSet.repr(), actualColumnSet.repr())
